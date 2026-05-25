@@ -1,0 +1,7 @@
+.venv-mcp/
+__pycache__/
+*.pyc
+*.pyo
+Dockerfile
+.dockerignore
+README.md
