@@ -4,7 +4,7 @@
 
 NDASentry exposes a multi-stage NDA risk analysis pipeline as MCP tools so any AI agent (Claude Desktop, Cursor, Cline, etc.) can review NDAs on behalf of its user — discover risky clauses, flag missing protections, return a structured risk report — without asking the user to leave the agent, create an account, or wait for a lawyer.
 
-The wedge: every other legal MCP server in this space requires an account, an enterprise login, or attorney-in-the-loop review. NDASentry is the only one a personal AI agent can call anonymously, pay $9 with a card, and get a structured analysis in ~60 seconds.
+The wedge: every other legal MCP server in this space requires an account, an enterprise login, or attorney-in-the-loop review. NDASentry is designed to be the simplest path for a personal AI agent: call anonymously, pay $9 with a card, get a structured analysis in under a minute.
 
 ## What it does
 
@@ -48,8 +48,8 @@ The agent calls preview_nda_risk first, returns a preview plus a payment URL. Yo
 
 For users who want their own instance, or local development:
 
-    git clone https://github.com/valtirman/NDA.git
-    cd NDA/mcp_server
+    git clone https://github.com/valtirman/ndasentry-mcp.git
+    cd ndasentry-mcp/mcp_server
     python -m venv .venv-mcp
     source .venv-mcp/bin/activate
     pip install -r requirements.txt
