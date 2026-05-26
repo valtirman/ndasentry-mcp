@@ -13,6 +13,13 @@ Thin protocol adapter: this module does no analysis itself. It serializes
 agent-side calls into HTTP requests against the NDASentry backend
 (default https://ndasentry.ai) which runs the analyzer pipeline.
 
+Tool metadata (server description + tool docstrings) is composed from
+three reviewable layers in `mcp_server/metadata/`:
+  - document_types.py   (Layer 1: document types we can analyze)
+  - clause_patterns.py  (Layer 2: clause patterns mapped to scored categories)
+  - user_phrasings.py   (Layer 3: real user query phrasings)
+Edit there, not here.
+
 For full README, see the repository root.
 """
 from __future__ import annotations
@@ -23,6 +30,12 @@ import os
 import httpx
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+
+from .metadata import (
+    SERVER_INSTRUCTIONS,
+    PREVIEW_DOCSTRING,
+    REPORT_DOCSTRING,
+)
 
 # Backend URL. Default to local dev. Override via env in production.
 BACKEND_URL = os.getenv("NDASENTRY_BACKEND_URL", "http://localhost:8001")
@@ -51,13 +64,19 @@ _security = TransportSecuritySettings(
 )
 
 # Initialize the MCP server.
-# The name is what agents see in their tool catalog.
-mcp = FastMCP("ndasentry", transport_security=_security)
+# `name` is what agents see in their tool catalog.
+# `instructions` is the server-level description shown in catalogs that
+# support it — composed from the three metadata layers.
+mcp = FastMCP(
+    "ndasentry",
+    instructions=SERVER_INSTRUCTIONS,
+    transport_security=_security,
+)
 
 
 @mcp.tool(
     annotations={
-        "title": "Preview NDA risk (free)",
+        "title": "Screen an NDA / contract for risk (free preview)",
         "readOnlyHint": False,
         "destructiveHint": False,
         "idempotentHint": False,
@@ -65,25 +84,6 @@ mcp = FastMCP("ndasentry", transport_security=_security)
     }
 )
 def preview_nda_risk(pdf_base64: str, filename: str = "nda.pdf") -> dict:
-    """Stage an NDA for analysis and return a free risk preview.
-
-    Accepts a base64-encoded PDF (max 10MB). Returns a partial risk
-    assessment covering the first ~3 pages of the document plus a
-    Stripe Checkout URL the user must complete to unlock the full
-    report via `get_nda_report`.
-
-    This tool creates session state and a one-time Stripe checkout
-    URL. It is NOT idempotent: each call mints a new session token
-    and a new checkout URL.
-
-    Args:
-        pdf_base64: The NDA as a base64-encoded PDF string.
-        filename: Optional original filename (for display only).
-
-    Returns:
-        A dict with: session_token, checkout_url, preview (partial
-        risk findings), and disclaimer.
-    """
     # Decode the base64 PDF. Reject empty or malformed input early
     # so the agent gets a clean error before any network round-trip.
     if not pdf_base64:
@@ -118,9 +118,14 @@ def preview_nda_risk(pdf_base64: str, filename: str = "nda.pdf") -> dict:
     return resp.json()
 
 
+# Attach the composed docstring (built from the three metadata layers).
+# Assigned post-definition because Python doesn't allow f-string docstrings.
+preview_nda_risk.__doc__ = PREVIEW_DOCSTRING
+
+
 @mcp.tool(
     annotations={
-        "title": "Get full NDA report (paid)",
+        "title": "Unlock full NDA / contract risk report (after $9 payment)",
         "readOnlyHint": False,
         "destructiveHint": False,
         "idempotentHint": False,
@@ -128,24 +133,6 @@ def preview_nda_risk(pdf_base64: str, filename: str = "nda.pdf") -> dict:
     }
 )
 def get_nda_report(session_token: str) -> dict:
-    """Retrieve the full NDA risk report for a paid session.
-
-    Polls /api/check_payment until Stripe webhook confirms payment, then
-    calls /api/results to fetch the analysis. The /api/results endpoint
-    caches the result for 5 minutes so transient retries within that
-    window are idempotent.
-
-    Polling: 2s interval, 5 minute total cap (150 attempts).
-
-    Args:
-        session_token: The token returned by `preview_nda_risk`.
-
-    Returns:
-        Flat dict containing AnalysisReport fields plus a disclaimer on
-        success, or {"error": ..., "message": ..., "disclaimer": ...} on
-        failure. Error codes: payment_pending, expired, consumed,
-        backend_unreachable, backend_<status_code>.
-    """
     import time as _time
 
     if not session_token:
@@ -250,6 +237,11 @@ def get_nda_report(session_token: str) -> dict:
             "message": f"Unexpected error: {exc}",
             "disclaimer": DISCLAIMER,
         }
+
+
+# Attach the composed docstring (built from the three metadata layers).
+get_nda_report.__doc__ = REPORT_DOCSTRING
+
 
 if __name__ == "__main__":
     # Streamable HTTP transport on /mcp.

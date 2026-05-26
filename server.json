@@ -1,0 +1,17 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.valtirman/ndasentry",
+  "title": "NDASentry",
+  "description": "Anonymous NDA risk analysis for AI agents. $9 per report. No signup, no data retention.",
+  "repository": {
+    "url": "https://github.com/valtirman/ndasentry-mcp",
+    "source": "github"
+  },
+  "version": "1.0.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://nda-mcp-production.up.railway.app/mcp"
+    }
+  ]
+}
