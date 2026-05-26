@@ -94,109 +94,6 @@ mcp = FastMCP(
     transport_security=_security,
 )
 
-# ---------------------------------------------------------------------------
-# MCP_HTTP_ROUTES_INJECTED
-#
-# Custom HTTP routes added underneath the FastMCP Starlette app.
-# These exist so search/LLM crawlers (OAI-SearchBot, GPTBot, ClaudeBot, etc.)
-# can discover this MCP server through the same conventions they use for
-# web pages, instead of getting 404s on /robots.txt or /.well-known/mcp.
-#
-# Background: OAI-SearchBot/1.4 hit /robots.txt on this hostname on
-# 2026-05-26 and got 404. Added explicit invites + discovery metadata.
-# ---------------------------------------------------------------------------
-
-from starlette.responses import PlainTextResponse, JSONResponse
-
-
-@mcp.custom_route("/robots.txt", methods=["GET"])
-async def _robots_txt(request):
-    body = (
-        "# NDASentry MCP server\n"
-        "# Live MCP discovery endpoint at /mcp\n"
-        "# Discovery metadata at /.well-known/mcp\n"
-        "# Project: https://ndasentry.ai\n"
-        "\n"
-        "# Explicitly invited: LLM and search crawlers\n"
-        "User-agent: GPTBot\n"
-        "Allow: /\n"
-        "\n"
-        "User-agent: ChatGPT-User\n"
-        "Allow: /\n"
-        "\n"
-        "User-agent: OAI-SearchBot\n"
-        "Allow: /\n"
-        "\n"
-        "User-agent: ClaudeBot\n"
-        "Allow: /\n"
-        "\n"
-        "User-agent: anthropic-ai\n"
-        "Allow: /\n"
-        "\n"
-        "User-agent: Claude-Web\n"
-        "Allow: /\n"
-        "\n"
-        "User-agent: PerplexityBot\n"
-        "Allow: /\n"
-        "\n"
-        "User-agent: Google-Extended\n"
-        "Allow: /\n"
-        "\n"
-        "User-agent: Applebot-Extended\n"
-        "Allow: /\n"
-        "\n"
-        "User-agent: CCBot\n"
-        "Allow: /\n"
-        "\n"
-        "User-agent: Bytespider\n"
-        "Allow: /\n"
-        "\n"
-        "# Default: allow general crawl\n"
-        "User-agent: *\n"
-        "Allow: /\n"
-        "\n"
-        "Sitemap: https://ndasentry.ai/sitemap.xml\n"
-    )
-    return PlainTextResponse(body, media_type="text/plain; charset=utf-8")
-
-
-@mcp.custom_route("/.well-known/mcp", methods=["GET"])
-async def _well_known_mcp(request):
-    return JSONResponse({
-        "name": "ndasentry",
-        "title": "NDASentry",
-        "description": (
-            "Screen NDAs and confidentiality agreements for risk. "
-            "Returns clause-level findings, evidence quotes, and a "
-            "10-category risk taxonomy score. Free preview tool, "
-            "$9 full report via web."
-        ),
-        "vendor": "FrontRange Mountain AI LLC",
-        "homepage": "https://ndasentry.ai",
-        "documentation": "https://ndasentry.ai/install.html",
-        "source": "https://github.com/valtirman/ndasentry-mcp",
-        "endpoints": {
-            "mcp": "/mcp",
-            "transport": "streamable-http"
-        },
-        "tools": [
-            {
-                "name": "preview_nda_risk",
-                "description": "Free regex-based preview of NDA risk. Returns clause summary + Stripe payment link for the full report."
-            },
-            {
-                "name": "get_nda_report",
-                "description": "Paid full NDA risk report (post-Stripe). Returns structured AnalysisReport JSON with 10-category scoring."
-            }
-        ],
-        "registry": {
-            "modelcontextprotocol": "io.github.valtirman/ndasentry",
-            "smithery": "ndasentry"
-        }
-    })
-
-# --------------------------- end MCP_HTTP_ROUTES_INJECTED ---------------------------
-
 
 
 @mcp.tool(
@@ -361,9 +258,157 @@ def get_nda_report(session_token: str) -> dict:
         }
 
 
+# ===========================================================================
+# MCP_ROUTES_FALLBACK_INJECTED
+#
+# Build a Starlette app that wraps FastMCP, mounting our custom routes
+# (/robots.txt, /.well-known/mcp, /.well-known/glama.json) ahead of MCP's
+# transport routes. This bypasses mcp.custom_route() which does not work
+# in mcp==1.27.1.
+#
+# Background: OAI-SearchBot/1.4 hit /robots.txt on this hostname on
+# 2026-05-26 and got 404. Glama hit /.well-known/glama.json same day, 404.
+# Adding explicit invites + discovery metadata as a Starlette wrapper.
+# ===========================================================================
+
+from starlette.applications import Starlette
+from starlette.routing import Route, Mount
+from starlette.responses import PlainTextResponse, JSONResponse
+
+
+async def _robots_txt(request):
+    body = (
+        "# NDASentry MCP server\n"
+        "# Live MCP discovery endpoint at /mcp\n"
+        "# Discovery metadata at /.well-known/mcp\n"
+        "# Project: https://ndasentry.ai\n"
+        "\n"
+        "# Explicitly invited: LLM and search crawlers\n"
+        "User-agent: GPTBot\n"
+        "Allow: /\n"
+        "\n"
+        "User-agent: ChatGPT-User\n"
+        "Allow: /\n"
+        "\n"
+        "User-agent: OAI-SearchBot\n"
+        "Allow: /\n"
+        "\n"
+        "User-agent: ClaudeBot\n"
+        "Allow: /\n"
+        "\n"
+        "User-agent: anthropic-ai\n"
+        "Allow: /\n"
+        "\n"
+        "User-agent: Claude-Web\n"
+        "Allow: /\n"
+        "\n"
+        "User-agent: PerplexityBot\n"
+        "Allow: /\n"
+        "\n"
+        "User-agent: Google-Extended\n"
+        "Allow: /\n"
+        "\n"
+        "User-agent: Applebot-Extended\n"
+        "Allow: /\n"
+        "\n"
+        "User-agent: CCBot\n"
+        "Allow: /\n"
+        "\n"
+        "User-agent: Bytespider\n"
+        "Allow: /\n"
+        "\n"
+        "User-agent: *\n"
+        "Allow: /\n"
+        "\n"
+        "Sitemap: https://ndasentry.ai/sitemap.xml\n"
+    )
+    return PlainTextResponse(body, media_type="text/plain; charset=utf-8")
+
+
+async def _well_known_mcp(request):
+    return JSONResponse({
+        "name": "ndasentry",
+        "title": "NDASentry",
+        "description": (
+            "Screen NDAs and confidentiality agreements for risk. "
+            "Returns clause-level findings, evidence quotes, and a "
+            "10-category risk taxonomy score. Free preview tool, "
+            "$9 full report via web."
+        ),
+        "vendor": "FrontRange Mountain AI LLC",
+        "homepage": "https://ndasentry.ai",
+        "documentation": "https://ndasentry.ai/install.html",
+        "source": "https://github.com/valtirman/ndasentry-mcp",
+        "endpoints": {
+            "mcp": "/mcp",
+            "transport": "streamable-http"
+        },
+        "tools": [
+            {
+                "name": "preview_nda_risk",
+                "description": "Free regex-based preview of NDA risk. Returns clause summary + Stripe payment link for the full report."
+            },
+            {
+                "name": "get_nda_report",
+                "description": "Paid full NDA risk report (post-Stripe). Returns structured AnalysisReport JSON with 10-category scoring."
+            }
+        ],
+        "registry": {
+            "modelcontextprotocol": "io.github.valtirman/ndasentry",
+            "smithery": "ndasentry"
+        }
+    })
+
+
+async def _well_known_glama(request):
+    return JSONResponse({
+        "$schema": "https://glama.ai/mcp/schemas/server.json",
+        "name": "NDASentry",
+        "slug": "ndasentry",
+        "description": (
+            "Screen NDAs and confidentiality agreements for risk. Returns "
+            "clause-level findings, evidence quotes, and a 10-category risk "
+            "taxonomy score. Free preview tool, $9 full report via web. "
+            "No account, no email, no document retention."
+        ),
+        "vendor": {
+            "name": "FrontRange Mountain AI LLC",
+            "url": "https://ndasentry.ai",
+            "location": "Monument, CO, USA"
+        },
+        "url": "https://ndasentry.ai",
+        "repository": {
+            "type": "git",
+            "url": "https://github.com/valtirman/ndasentry-mcp"
+        },
+        "documentation": "https://ndasentry.ai/install.html",
+        "installation": {
+            "transport": "streamable-http",
+            "endpoint": "https://nda-mcp-production.up.railway.app/mcp",
+            "clients": ["claude-desktop", "cursor", "continue", "cline"]
+        },
+        "categories": ["legal", "contracts", "document-analysis", "risk-screening"],
+        "license": "MIT",
+        "version": "1.0.0"
+    })
+
+
 if __name__ == "__main__":
-    # Streamable HTTP transport on /mcp.
-    # Port 1966 locally; production port set by deploy environment.
-    mcp.settings.host = "0.0.0.0"
-    mcp.settings.port = int(os.getenv("PORT", "1966"))
-    mcp.run(transport="streamable-http")
+    import uvicorn
+
+    # Get the underlying Starlette app that FastMCP exposes for streamable HTTP.
+    # FastMCP 1.27 exposes this via streamable_http_app() method.
+    mcp_app = mcp.streamable_http_app()
+
+    # Build a wrapper Starlette app: our custom routes first, then mount the
+    # MCP app at the root for everything else.
+    app = Starlette(routes=[
+        Route("/robots.txt", _robots_txt, methods=["GET"]),
+        Route("/.well-known/mcp", _well_known_mcp, methods=["GET"]),
+        Route("/.well-known/glama.json", _well_known_glama, methods=["GET"]),
+        Mount("/", app=mcp_app),
+    ])
+
+    port = int(os.getenv("PORT", "1966"))
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+
