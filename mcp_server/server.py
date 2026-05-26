@@ -37,6 +37,27 @@ from .metadata import (
     REPORT_DOCSTRING,
 )
 
+
+def _with_docstring(docstring: str):
+    """Decorator that sets __doc__ on a function BEFORE other decorators run.
+
+    Why: @mcp.tool reads func.__doc__ at decoration time and snapshots it as
+    the MCP tool description. If we assign __doc__ after @mcp.tool, the tool
+    description ends up empty. This helper ensures the docstring is in place
+    BEFORE @mcp.tool sees the function.
+
+    Usage:
+        @mcp.tool(annotations={...})
+        @_with_docstring(MY_COMPOSED_DOCSTRING)
+        def my_tool(...):
+            ...
+    """
+    def _apply(fn):
+        fn.__doc__ = docstring
+        return fn
+    return _apply
+
+
 # Backend URL. Default to local dev. Override via env in production.
 BACKEND_URL = os.getenv("NDASENTRY_BACKEND_URL", "http://localhost:8001")
 
@@ -83,6 +104,7 @@ mcp = FastMCP(
         "openWorldHint": False,
     }
 )
+@_with_docstring(PREVIEW_DOCSTRING)
 def preview_nda_risk(pdf_base64: str, filename: str = "nda.pdf") -> dict:
     # Decode the base64 PDF. Reject empty or malformed input early
     # so the agent gets a clean error before any network round-trip.
@@ -118,11 +140,6 @@ def preview_nda_risk(pdf_base64: str, filename: str = "nda.pdf") -> dict:
     return resp.json()
 
 
-# Attach the composed docstring (built from the three metadata layers).
-# Assigned post-definition because Python doesn't allow f-string docstrings.
-preview_nda_risk.__doc__ = PREVIEW_DOCSTRING
-
-
 @mcp.tool(
     annotations={
         "title": "Unlock full NDA / contract risk report (after $9 payment)",
@@ -132,6 +149,7 @@ preview_nda_risk.__doc__ = PREVIEW_DOCSTRING
         "openWorldHint": False,
     }
 )
+@_with_docstring(REPORT_DOCSTRING)
 def get_nda_report(session_token: str) -> dict:
     import time as _time
 
@@ -237,10 +255,6 @@ def get_nda_report(session_token: str) -> dict:
             "message": f"Unexpected error: {exc}",
             "disclaimer": DISCLAIMER,
         }
-
-
-# Attach the composed docstring (built from the three metadata layers).
-get_nda_report.__doc__ = REPORT_DOCSTRING
 
 
 if __name__ == "__main__":
